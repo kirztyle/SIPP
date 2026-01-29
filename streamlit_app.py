@@ -1106,11 +1106,6 @@ def check_installation():
     except:
         missing_packages.append("cloudscraper")
     
-    try:
-        import undetected_chromedriver
-    except:
-        missing_packages.append("undetected-chromedriver")
-    
     if missing_packages:
         st.sidebar.warning(f"Missing packages: {', '.join(missing_packages)}")
         st.sidebar.code(f"pip install {' '.join(missing_packages)}")
@@ -1128,4 +1123,5 @@ if __name__ == "__main__":
     except Exception as e:
         st.error(f"Application error: {e}")
         st.exception(e)
+
 
