@@ -10,12 +10,6 @@ from urllib.parse import urlparse, urljoin, quote
 import os
 from datetime import datetime
 import cloudscraper
-import undetected_chromedriver as uc  # Untuk bypass anti-bot yang canggih
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException
 import threading
 
 # =============================
@@ -1134,3 +1128,4 @@ if __name__ == "__main__":
     except Exception as e:
         st.error(f"Application error: {e}")
         st.exception(e)
+
