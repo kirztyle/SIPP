@@ -27,11 +27,23 @@ RELEVANT_CLASSIFICATIONS = [
     "Perselisihan Pemutusan Hubungan Kerja Sepihak"
 ]
 
-# Kolom yang dipertahankan (urutan sesuai permintaan)
+# Kolom yang dipertahankan (HAPUS DUPLIKASI STATUS)
 OUTPUT_COLUMNS = [
-    "CIF", "Bulan_Report", "Status", "Nama Pencarian", "Nama PN",
-    "Domain", "Nomor Perkara", "Tanggal Register", "Klasifikasi",
-    "Para Pihak", "Status", "Lama Proses", "Link", "Timestamp", "Keterangan"
+    "CIF", 
+    "Bulan_Report", 
+    "Status",  # Status yang pertama
+    "Nama Pencarian", 
+    "Nama PN",
+    "Domain", 
+    "Nomor Perkara", 
+    "Tanggal Register", 
+    "Klasifikasi",
+    "Para Pihak", 
+    # "Status",  # <-- HAPUS duplikasi Status yang kedua
+    "Lama Proses", 
+    "Link", 
+    "Timestamp", 
+    "Keterangan"
 ]
 
 st.sidebar.header("⚙️ Pengaturan")
@@ -183,7 +195,6 @@ if uploaded_files:
                 st.error("❌ Gagal memproses file. Pastikan file Excel memiliki format yang benar.")
 else:
     st.info("📌 Silakan upload minimal 1 file Excel untuk memulai.")
-
 
 # Footer
 st.markdown("---")
