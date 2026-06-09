@@ -22,6 +22,12 @@ st.markdown("""
     .dataframe {
         font-size: 12px;
     }
+    .success-box {
+        background-color: #d4edda;
+        padding: 10px;
+        border-radius: 5px;
+        margin: 10px 0;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -46,15 +52,20 @@ with st.sidebar:
     st.markdown("---")
     st.header("📋 Field yang diambil:")
     st.markdown("""
+    - ✅ **Nama Pencarian** (dari file Excel)
+    - ✅ **Pihak Tergugat** (dari file Excel)
     - ✅ Nomor Perkara
     - ✅ Tanggal Pendaftaran
     - ✅ Klasifikasi Perkara
-    - ✅ Penggugat
-    - ✅ Tergugat
-    - ✅ **Petitum** (prioritas)
+    - ✅ Penggugat (hasil scraping)
+    - ✅ Tergugat (hasil scraping)
+    - ✅ **Petitum** (prioritas utama)
     - ✅ Nilai Sengketa
     - ✅ Status Publikasi
     """)
+    
+    st.markdown("---")
+    st.info("💡 **Catatan:** Kolom 'Nama Pencarian' dan 'Pihak_Tergugat' akan digabungkan dengan hasil scraping")
 
 # Function untuk scraping satu URL
 def scrape_perkara(url, headers):
@@ -72,7 +83,7 @@ def scrape_perkara(url, headers):
             'Tanggal Pendaftaran': '',
             'Klasifikasi Perkara': '',
             'Penggugat': '',
-            'Tergugat': '',
+            'Tergugat_Scraping': '',
             'Petitum': '',
             'Nilai Sengketa': '',
             'Pihak Dipublikasikan': '',
@@ -108,7 +119,7 @@ def scrape_perkara(url, headers):
                     # Ambil nama penggugat dari tabel dalam
                     data['Penggugat'] = extract_names_from_inner_table(value_cell)
                 elif 'tergugat' in label and 'kuasa' not in label:
-                    data['Tergugat'] = extract_names_from_inner_table(value_cell)
+                    data['Tergugat_Scraping'] = extract_names_from_inner_table(value_cell)
                 elif 'petitum' in label:
                     data['Petitum'] = clean_petitum(value)
                 elif 'nilai sengketa' in label:
@@ -125,7 +136,7 @@ def scrape_perkara(url, headers):
             'Tanggal Pendaftaran': '',
             'Klasifikasi Perkara': '',
             'Penggugat': '',
-            'Tergugat': '',
+            'Tergugat_Scraping': '',
             'Petitum': '',
             'Nilai Sengketa': '',
             'Pihak Dipublikasikan': '',
@@ -139,7 +150,7 @@ def scrape_perkara(url, headers):
             'Tanggal Pendaftaran': '',
             'Klasifikasi Perkara': '',
             'Penggugat': '',
-            'Tergugat': '',
+            'Tergugat_Scraping': '',
             'Petitum': '',
             'Nilai Sengketa': '',
             'Pihak Dipublikasikan': '',
@@ -172,28 +183,51 @@ def clean_petitum(text):
     text = text.replace(';<br>', ';\n').replace('<br>', '\n')
     return text
 
-def process_urls(url_list, delay, progress_bar, status_text):
-    """Proses multiple URLs dengan progress"""
+def process_urls(df, url_column, delay, progress_bar, status_text):
+    """Proses multiple URLs dengan menggabungkan data dari Excel"""
     results = []
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
     }
     
-    for i, url in enumerate(url_list):
-        status_text.text(f"Memproses: {url[:80]}...")
+    total_rows = len(df)
+    
+    for i, (idx, row) in enumerate(df.iterrows()):
+        url = str(row[url_column]).strip()
+        
+        status_text.text(f"Memproses {i+1}/{total_rows}: {url[:80]}...")
         
         # Tambahkan http:// jika tidak ada protocol
         if not url.startswith('http'):
             url = 'http://' + url
         
-        result = scrape_perkara(url, headers)
-        results.append(result)
+        # Scrape data
+        scraped_data = scrape_perkara(url, headers)
+        
+        # Gabungkan dengan data dari Excel
+        final_data = {
+            'Nama Pencarian': row.get('Nama Pencarian', ''),
+            'Pihak_Tergugat': row.get('Pihak_Tergugat', ''),
+            'URL': url,
+            'Nomor Perkara': scraped_data.get('Nomor Perkara', ''),
+            'Tanggal Pendaftaran': scraped_data.get('Tanggal Pendaftaran', ''),
+            'Klasifikasi Perkara': scraped_data.get('Klasifikasi Perkara', ''),
+            'Penggugat': scraped_data.get('Penggugat', ''),
+            'Tergugat_Scraping': scraped_data.get('Tergugat_Scraping', ''),
+            'Petitum': scraped_data.get('Petitum', ''),
+            'Nilai Sengketa': scraped_data.get('Nilai Sengketa', ''),
+            'Pihak Dipublikasikan': scraped_data.get('Pihak Dipublikasikan', ''),
+            'Status': scraped_data.get('Status', 'Gagal'),
+            'Error Message': scraped_data.get('Error Message', '')
+        }
+        
+        results.append(final_data)
         
         # Update progress
-        progress_bar.progress((i + 1) / len(url_list))
+        progress_bar.progress((i + 1) / total_rows)
         
         # Delay
-        if i < len(url_list) - 1:
+        if i < total_rows - 1:
             time.sleep(delay)
     
     return results
@@ -208,13 +242,23 @@ with tab1:
         uploaded_file = st.file_uploader(
             "Upload file Excel (format .xlsx atau .xls)",
             type=['xlsx', 'xls'],
-            help="File harus memiliki kolom berisi URL (default: 'URL' atau 'Link')"
+            help="File HARUS memiliki kolom: 'Nama Pencarian', 'Pihak_Tergugat', dan kolom URL"
         )
         
         if uploaded_file:
             try:
                 df = pd.read_excel(uploaded_file)
                 st.success(f"✅ Berhasil membaca file: {len(df)} baris data")
+                
+                # Cek kolom yang diperlukan
+                required_columns = ['Nama Pencarian', 'Pihak_Tergugat']
+                missing_columns = [col for col in required_columns if col not in df.columns]
+                
+                if missing_columns:
+                    st.error(f"❌ File Excel HARUS memiliki kolom: {', '.join(missing_columns)}")
+                    st.info("📌 Contoh format file yang benar:")
+                    st.code("| Nama Pencarian | Pihak_Tergugat | URL |")
+                    st.stop()
                 
                 # Deteksi kolom URL
                 possible_url_columns = ['url', 'URL', 'link', 'Link', 'LINK', 'alamat', 'website']
@@ -232,23 +276,36 @@ with tab1:
                     st.info(f"📌 Menggunakan kolom: **{url_column}**")
                 
                 # Preview data
-                with st.expander("Preview data Excel"):
-                    st.dataframe(df.head(10))
+                with st.expander("Preview data Excel (10 baris pertama)"):
+                    st.dataframe(df[required_columns + [url_column]].head(10))
+                
+                # Statistik data
+                st.info(f"""
+                📊 **Statistik Data:**
+                - Total baris: {len(df)}
+                - Nama Pencarian tidak kosong: {(df['Nama Pencarian'].notna() & (df['Nama Pencarian'] != '')).sum()}
+                - Pihak_Tergugat tidak kosong: {(df['Pihak_Tergugat'].notna() & (df['Pihak_Tergugat'] != '')).sum()}
+                - URL tidak kosong: {(df[url_column].notna() & (df[url_column] != '')).sum()}
+                """)
                 
                 # Tombol start scraping
                 if st.button("🚀 Mulai Scraping", type="primary", use_container_width=True):
-                    # Ambil list URL
-                    url_list = df[url_column].dropna().tolist()
-                    url_list = [str(url).strip() for url in url_list]
+                    # Filter baris dengan URL valid
+                    valid_rows = df[df[url_column].notna() & (df[url_column] != '')]
+                    valid_rows = valid_rows.reset_index(drop=True)
                     
-                    st.info(f"📊 Akan memproses {len(url_list)} URL")
+                    if len(valid_rows) == 0:
+                        st.error("❌ Tidak ada URL valid untuk diproses!")
+                        st.stop()
+                    
+                    st.info(f"📊 Akan memproses {len(valid_rows)} URL dari total {len(df)} baris")
                     
                     # Progress bar
                     progress_bar = st.progress(0)
                     status_text = st.empty()
                     
                     # Proses scraping
-                    results = process_urls(url_list, delay, progress_bar, status_text)
+                    results = process_urls(valid_rows, url_column, delay, progress_bar, status_text)
                     
                     # Simpan ke session state
                     st.session_state['results'] = results
@@ -256,7 +313,11 @@ with tab1:
                     
                     progress_bar.empty()
                     status_text.empty()
-                    st.success(f"✅ Scraping selesai! {len([r for r in results if r['Status']=='Sukses'])} berhasil, {len([r for r in results if r['Status']=='Gagal'])} gagal")
+                    
+                    sukses_count = len([r for r in results if r['Status'] == 'Sukses'])
+                    gagal_count = len([r for r in results if r['Status'] == 'Gagal'])
+                    
+                    st.success(f"✅ Scraping selesai! {sukses_count} berhasil, {gagal_count} gagal")
                     
                     # Auto switch ke tab hasil
                     st.rerun()
@@ -269,7 +330,7 @@ with tab2:
         df_results = st.session_state['df_results']
         
         # Statistik
-        col1, col2, col3, col4 = st.columns(4)
+        col1, col2, col3, col4, col5 = st.columns(5)
         with col1:
             st.metric("Total URL", len(df_results))
         with col2:
@@ -281,6 +342,12 @@ with tab2:
         with col4:
             with_petitum = len(df_results[df_results['Petitum'] != ''])
             st.metric("Dapat Petitum", with_petitum)
+        with col5:
+            match_tergugat = len(df_results[
+                (df_results['Pihak_Tergugat'] != '') & 
+                (df_results['Tergugat_Scraping'] != '')
+            ])
+            st.metric("Tergugat Terisi", match_tergugat)
         
         st.markdown("---")
         
@@ -291,42 +358,63 @@ with tab2:
             default=['Sukses']
         )
         
+        search = st.text_input("🔍 Cari berdasarkan Nama Pencarian atau Nomor Perkara", "")
+        
         filtered_df = df_results[df_results['Status'].isin(filter_status)]
         
-        # Tampilkan data
-        st.subheader("📋 Hasil Scraping")
+        if search:
+            filtered_df = filtered_df[
+                filtered_df['Nama Pencarian'].str.contains(search, case=False, na=False) |
+                filtered_df['Nomor Perkara'].str.contains(search, case=False, na=False)
+            ]
         
-        # Pilih kolom yang ditampilkan
-        display_columns = ['Nomor Perkara', 'Klasifikasi Perkara', 'Penggugat', 'Tergugat', 'Status']
+        st.subheader(f"📋 Hasil Scraping ({len(filtered_df)} data)")
         
-        # Tampilkan dengan expandable Petitum
+        # Tampilkan data dalam bentuk tabel ringkas
+        display_df = filtered_df[['Nama Pencarian', 'Pihak_Tergugat', 'Nomor Perkara', 'Tergugat_Scraping', 'Status']].copy()
+        st.dataframe(display_df, use_container_width=True)
+        
+        # Detail per baris dengan expander
+        st.markdown("---")
+        st.subheader("📄 Detail Lengkap Per Data")
+        
         for idx, row in filtered_df.iterrows():
-            with st.expander(f"📌 {row['Nomor Perkara'] if row['Nomor Perkara'] else 'No. Perkara Tidak Diketahui'} - {row['Status']}"):
+            with st.expander(f"📌 {row['Nama Pencarian']} - {row['Nomor Perkara'] if row['Nomor Perkara'] else 'No. Perkara Tidak Diketahui'} - {row['Status']}"):
                 col1, col2 = st.columns(2)
                 with col1:
-                    st.markdown("**Nomor Perkara:**")
-                    st.write(row['Nomor Perkara'])
-                    st.markdown("**Tanggal Pendaftaran:**")
-                    st.write(row['Tanggal Pendaftaran'])
-                    st.markdown("**Klasifikasi:**")
-                    st.write(row['Klasifikasi Perkara'])
+                    st.markdown("**📋 Data dari File Excel:**")
+                    st.write(f"**Nama Pencarian:** {row['Nama Pencarian']}")
+                    st.write(f"**Pihak_Tergugat:** {row['Pihak_Tergugat']}")
+                    st.write(f"**URL:** {row['URL']}")
+                    
+                    st.markdown("**⚖️ Data Hasil Scraping:**")
+                    st.write(f"**Nomor Perkara:** {row['Nomor Perkara']}")
+                    st.write(f"**Tanggal Pendaftaran:** {row['Tanggal Pendaftaran']}")
+                    st.write(f"**Klasifikasi Perkara:** {row['Klasifikasi Perkara']}")
+                
                 with col2:
-                    st.markdown("**Penggugat:**")
-                    st.write(row['Penggugat'][:200] + "..." if len(row['Penggugat']) > 200 else row['Penggugat'])
-                    st.markdown("**Tergugat:**")
-                    st.write(row['Tergugat'][:200] + "..." if len(row['Tergugat']) > 200 else row['Tergugat'])
+                    st.write(f"**Penggugat:**")
+                    st.text_area("", row['Penggugat'], height=100, key=f"penggugat_{idx}", label_visibility="collapsed")
+                    
+                    st.write(f"**Tergugat (Scraping):**")
+                    st.text_area("", row['Tergugat_Scraping'], height=100, key=f"tergugat_{idx}", label_visibility="collapsed")
                 
                 st.markdown("**📜 PETITUM:**")
-                st.text_area("", row['Petitum'], height=200, key=f"petitum_{idx}")
+                st.text_area("", row['Petitum'], height=200, key=f"petitum_{idx}", label_visibility="collapsed")
                 
                 if row['Status'] == 'Gagal':
-                    st.error(f"Error: {row['Error Message']}")
+                    st.error(f"❌ Error: {row['Error Message']}")
                 
-                st.markdown(f"🔗 [Buka URL]({row['URL']})")
+                # Perbandingan Tergugat
+                if row['Pihak_Tergugat'] and row['Tergugat_Scraping']:
+                    if row['Pihak_Tergugat'].lower() in row['Tergugat_Scraping'].lower():
+                        st.success("✅ Pihak_Tergugat cocok dengan hasil scraping")
+                    else:
+                        st.warning("⚠️ Pihak_Tergugat berbeda dengan hasil scraping")
         
         # Download buttons
         st.markdown("---")
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
         
         with col1:
             # Download Excel
@@ -352,6 +440,21 @@ with tab2:
                 mime="text/csv",
                 use_container_width=True
             )
+        
+        with col3:
+            # Download hanya kolom tertentu
+            summary_df = df_results[['Nama Pencarian', 'Pihak_Tergugat', 'Nomor Perkara', 'Tergugat_Scraping', 'Petitum', 'Status']]
+            summary_output = io.BytesIO()
+            with pd.ExcelWriter(summary_output, engine='openpyxl') as writer:
+                summary_df.to_excel(writer, index=False, sheet_name='Ringkasan')
+            
+            st.download_button(
+                label="📥 Download Ringkasan",
+                data=summary_output.getvalue(),
+                file_name=f"ringkasan_scraping_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
     else:
         st.info("👈 Silakan upload file Excel dan mulai scraping di tab 'Upload & Scrape'")
 
@@ -359,35 +462,49 @@ with tab3:
     st.markdown("""
     ## 📖 Panduan Penggunaan
     
+    ### Format File Excel yang Diperlukan:
+    
+    File Excel HARUS memiliki kolom berikut:
+    
+    | Nama Pencarian | Pihak_Tergugat | URL |
+    |----------------|----------------|-----|
+    | PT. Mandiri Utama | PT. Mandiri Utama Finance | https://sipp.pn-blitar.go.id/detil/... |
+    | Safarul Anam | Safarul Anam, S.H. | https://sipp.pn-blitar.go.id/detil/... |
+    
+    ### Kolom yang wajib ada:
+    1. **Nama Pencarian** - Nama atau keyword untuk pencarian
+    2. **Pihak_Tergugat** - Data tergugat dari file Excel (akan dibandingkan dengan hasil scraping)
+    3. **URL** atau **Link** - Alamat website detail perkara
+    
     ### Langkah-langkah:
-    1. **Siapkan file Excel** dengan kolom berisi daftar URL (contoh: kolom 'URL' atau 'Link')
+    1. **Siapkan file Excel** dengan 3 kolom wajib di atas
     2. **Upload file** melalui tab "Upload & Scrape"
     3. **Pilih kolom URL** (jika tidak terdeteksi otomatis)
     4. **Klik tombol "Mulai Scraping"**
-    5. **Tunggu proses selesai** (akan ada progress bar)
+    5. **Tunggu proses selesai** (ada progress bar)
     6. **Lihat hasil** di tab "Hasil Scraping"
-    7. **Download hasil** dalam format Excel atau CSV
     
-    ### Format File Excel yang didukung:
-    - .xlsx
-    - .xls
+    ### Data yang dihasilkan:
     
-    ### Contoh struktur file:
+    #### Dari file Excel:
+    - Nama Pencarian
+    - Pihak_Tergugat
     
-    | URL | Keterangan |
-    |-----|------------|
-    | https://sipp.pn-blitar.go.id/detil/172/Pdt.G/2025/PN_Blt | Perkara 1 |
-    | https://sipp.pn-blitar.go.id/detil/... | Perkara 2 |
-    
-    ### Data yang diambil:
+    #### Dari hasil scraping:
     - Nomor Perkara
     - Tanggal Pendaftaran
     - Klasifikasi Perkara
     - Penggugat
-    - Tergugat
+    - Tergugat_Scraping
     - **Petitum** (utama)
     - Nilai Sengketa
     - Status Publikasi
+    
+    ### Fitur Tambahan:
+    - ✅ Perbandingan otomatis antara Pihak_Tergugat (Excel) dengan Tergugat_Scraping
+    - ✅ Pencarian berdasarkan Nama Pencarian atau Nomor Perkara
+    - ✅ Filter berdasarkan status sukses/gagal
+    - ✅ Download hasil dalam 3 format (Excel lengkap, CSV, Ringkasan)
     
     ### Catatan Penting:
     ⚠️ **Website yang di-scrape harus mendukung requests (tidak memerlukan JavaScript)**
@@ -395,10 +512,11 @@ with tab3:
     ⚠️ **Hormati robots.txt dan kebijakan website terkait**
     
     ### Troubleshooting:
+    - **File tidak bisa diupload**: Pastikan format .xlsx atau .xls dan memiliki kolom yang benar
     - **Gagal koneksi**: Periksa URL dan koneksi internet
     - **Petitum kosong**: Struktur HTML mungkin berbeda dari contoh
-    - **Rate limited**: Tingkatkan jeda antar request
+    - **Rate limited**: Tingkatkan jeda antar request di sidebar
     """)
 
 st.markdown("---")
-st.markdown("⚖️ Dibuat dengan ❤️ untuk kebutuhan scraping data perkara")
+st.markdown("⚖️ Dibuat dengan ❤️ - Scraper Data Perkara dengan Excel Input")
